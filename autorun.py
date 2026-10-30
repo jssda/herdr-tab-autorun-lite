@@ -165,52 +165,62 @@ def event_tab() -> dict:
     return event_payload().get("tab") or {}
 
 
-NEW_WS_TTL = 15.0
+INITIAL_TAB_TTL = 120.0
 
 
-def new_ws_file() -> Path:
+def initial_tabs_file() -> Path:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    return STATE_DIR / "new-workspaces.txt"
+    return STATE_DIR / "initial-tabs.txt"
 
 
-def mark_new_workspace(workspace_id: str) -> None:
-    if not workspace_id:
+def mark_initial_tab(tab_id: str) -> None:
+    """workspace.created 时记下它的初始 tab，只跳过这一个。"""
+    if not tab_id:
         return
-    path = new_ws_file()
+    path = initial_tabs_file()
     now = time.time()
     keep = []
     if path.exists():
         for line in path.read_text(encoding="utf-8").splitlines():
             parts = line.split()
-            if len(parts) == 2 and now - float(parts[1]) < NEW_WS_TTL:
+            if len(parts) == 2 and now - float(parts[1]) < INITIAL_TAB_TTL:
                 keep.append(line)
-    keep.append(f"{workspace_id} {now}")
+    keep.append(f"{tab_id} {now}")
     path.write_text("\n".join(keep) + "\n", encoding="utf-8")
 
 
-def is_new_workspace(workspace_id: str) -> bool:
-    if not workspace_id:
-        return False
-    path = new_ws_file()
-    if not path.exists():
+def consume_initial_tab(tab_id: str) -> bool:
+    path = initial_tabs_file()
+    if not path.exists() or not tab_id:
         return False
     now = time.time()
+    keep, hit = [], False
     for line in path.read_text(encoding="utf-8").splitlines():
         parts = line.split()
-        if len(parts) == 2 and parts[0] == workspace_id and now - float(parts[1]) < NEW_WS_TTL:
-            return True
-    return False
+        if len(parts) != 2:
+            continue
+        try:
+            ts = float(parts[1])
+        except ValueError:
+            continue
+        if parts[0] == tab_id:
+            hit = True
+            continue
+        if now - ts < INITIAL_TAB_TTL:
+            keep.append(line)
+    path.write_text("\n".join(keep) + ("\n" if keep else ""), encoding="utf-8")
+    return hit
 
 
-def skip_new_workspace(cfg: dict, tab: dict, workspace_id: str) -> bool:
-    """新建 workspace 的那个初始 tab 默认不动：用户通常先 cd 再决定干什么。"""
+def skip_initial_workspace_tab(cfg: dict, tab: dict) -> bool:
+    """只放过新建 workspace 的那一个初始 tab；同一 workspace 里之后手开的 tab 照常执行。"""
     if str(cfg.get("new_workspace") or "skip").strip().lower() == "run":
         return False
-    if tab.get("number") == 1:
-        log("这是新建 workspace 的初始 tab（number=1），按 new_workspace=skip 不处理")
+    if consume_initial_tab(str(tab.get("tab_id") or "")):
+        log("这是新建 workspace 的初始 tab，按 new_workspace=skip 不处理")
         return True
-    if is_new_workspace(workspace_id):
-        log(f"{workspace_id} 刚被创建（{NEW_WS_TTL:.0f}s 内），不处理它的初始 tab")
+    if tab.get("number") == 1:
+        log("这是 workspace 的首个 tab（number=1），按 new_workspace=skip 不处理")
         return True
     return False
 
@@ -622,8 +632,9 @@ def main(argv: list[str]) -> int:
     cfg = load_config()
     if "--workspace-created" in argv:
         ws = event_payload().get("workspace") or {}
-        mark_new_workspace(str(ws.get("workspace_id") or os.environ.get("HERDR_WORKSPACE_ID", "")))
-        log(f"记录新 workspace {ws.get('workspace_id')}，它的初始 tab 不自动执行")
+        initial = str(ws.get("active_tab_id") or os.environ.get("HERDR_TAB_ID", ""))
+        mark_initial_tab(initial)
+        log(f"记录新 workspace {ws.get('workspace_id')} 的初始 tab {initial}（只跳过它）")
         return 0
     if "--picker-mode" in argv:
         print(picker_mode(cfg))
@@ -659,7 +670,7 @@ def main(argv: list[str]) -> int:
         log("拿不到 tab_id，跳过")
         return 0
 
-    if not manual and skip_new_workspace(cfg, tab, workspace_id):
+    if not manual and skip_initial_workspace_tab(cfg, tab):
         return 0
 
     if not manual and consume_own(tab_id):
