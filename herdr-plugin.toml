@@ -1,0 +1,44 @@
+id = "jssd.tab-autorun"
+name = "Tab Autorun Lite"
+version = "0.3.0"
+min_herdr_version = "0.9.0"
+description = "Run a command or start an agent in every new tab, with an optional picker"
+platforms = ["linux"]
+
+# 新 tab 自动执行（事件钩子）
+[[events]]
+on = "tab.created"
+command = ["python3", "autorun.py", "--event"]
+
+# 选择器：弹窗里用 fzf 选这个 tab 要跑什么
+[[panes]]
+id = "new-tab-picker"
+title = "New tab"
+placement = "popup"
+width = "70%"
+height = "50%"
+command = ["sh", "picker.sh"]
+
+[[actions]]
+id = "new"
+title = "Tab Autorun: new tab (pick agent)"
+contexts = ["global"]
+command = ["sh", "open-picker.sh"]
+
+[[actions]]
+id = "run-here"
+title = "Tab Autorun: run in this tab"
+contexts = ["tab"]
+command = ["python3", "autorun.py", "--manual"]
+
+[[actions]]
+id = "toggle"
+title = "Tab Autorun: toggle on/off"
+contexts = ["global"]
+command = ["python3", "autorun.py", "--toggle"]
+
+[[actions]]
+id = "doctor"
+title = "Tab Autorun: doctor (show matched rule)"
+contexts = ["tab"]
+command = ["python3", "autorun.py", "--doctor"]
