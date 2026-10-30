@@ -44,6 +44,10 @@ DEFAULT_CONFIG = '''# herdr tab-autorun-lite — edits apply immediately, no res
 
 enabled = true
 
+# Brand-new workspace's first tab: skip (recommended — you often cd around first) | run
+# 新建 workspace 时那个初始 tab：skip（默认，通常要先 cd）/ run（照常自动执行）
+new_workspace = "skip"
+
 # Picker menu: auto (fzf if present) | builtin | fzf
 # 选择器菜单：auto（有 fzf 就用）/ builtin（永远内置）/ fzf（只认 fzf）
 picker = "auto"
@@ -142,7 +146,7 @@ def load_config() -> dict:
         sys.exit(0)
 
 
-def event_tab() -> dict:
+def event_payload() -> dict:
     """HERDR_PLUGIN_EVENT_JSON 形如 {"event":"tab_created","data":{"type":...,"tab":{...}}}。"""
     raw = os.environ.get("HERDR_PLUGIN_EVENT_JSON") or ""
     if not raw:
@@ -154,7 +158,61 @@ def event_tab() -> dict:
     for key in ("data", "event"):
         if isinstance(data.get(key), dict):
             data = data[key]
-    return data.get("tab") or {}
+    return data
+
+
+def event_tab() -> dict:
+    return event_payload().get("tab") or {}
+
+
+NEW_WS_TTL = 15.0
+
+
+def new_ws_file() -> Path:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    return STATE_DIR / "new-workspaces.txt"
+
+
+def mark_new_workspace(workspace_id: str) -> None:
+    if not workspace_id:
+        return
+    path = new_ws_file()
+    now = time.time()
+    keep = []
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            parts = line.split()
+            if len(parts) == 2 and now - float(parts[1]) < NEW_WS_TTL:
+                keep.append(line)
+    keep.append(f"{workspace_id} {now}")
+    path.write_text("\n".join(keep) + "\n", encoding="utf-8")
+
+
+def is_new_workspace(workspace_id: str) -> bool:
+    if not workspace_id:
+        return False
+    path = new_ws_file()
+    if not path.exists():
+        return False
+    now = time.time()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0] == workspace_id and now - float(parts[1]) < NEW_WS_TTL:
+            return True
+    return False
+
+
+def skip_new_workspace(cfg: dict, tab: dict, workspace_id: str) -> bool:
+    """新建 workspace 的那个初始 tab 默认不动：用户通常先 cd 再决定干什么。"""
+    if str(cfg.get("new_workspace") or "skip").strip().lower() == "run":
+        return False
+    if tab.get("number") == 1:
+        log("这是新建 workspace 的初始 tab（number=1），按 new_workspace=skip 不处理")
+        return True
+    if is_new_workspace(workspace_id):
+        log(f"{workspace_id} 刚被创建（{NEW_WS_TTL:.0f}s 内），不处理它的初始 tab")
+        return True
+    return False
 
 
 def target_tab(manual: bool) -> dict:
@@ -562,6 +620,11 @@ def main(argv: list[str]) -> int:
     doctor = "--doctor" in argv
 
     cfg = load_config()
+    if "--workspace-created" in argv:
+        ws = event_payload().get("workspace") or {}
+        mark_new_workspace(str(ws.get("workspace_id") or os.environ.get("HERDR_WORKSPACE_ID", "")))
+        log(f"记录新 workspace {ws.get('workspace_id')}，它的初始 tab 不自动执行")
+        return 0
     if "--picker-mode" in argv:
         print(picker_mode(cfg))
         return 0
@@ -594,6 +657,9 @@ def main(argv: list[str]) -> int:
             log(f"选项: {[row['label'] for row in choices(cfg)]} · picker={picker_mode(cfg)}")
             return 0
         log("拿不到 tab_id，跳过")
+        return 0
+
+    if not manual and skip_new_workspace(cfg, tab, workspace_id):
         return 0
 
     if not manual and consume_own(tab_id):

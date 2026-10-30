@@ -58,6 +58,7 @@ jssd.tab-autorun`. It is generated on first use. Edits apply immediately — no 
 ```toml
 enabled = true
 picker = "auto"          # auto = fzf when available; builtin = always the built-in menu; fzf = require fzf
+new_workspace = "skip"   # leave a brand-new workspace's first tab alone (you often cd first); "run" to opt in
 
 [default]
 mode = "agent"           # agent | command | skip
@@ -194,6 +195,9 @@ for the prompt → run.
 ## Known limits
 
 - Only new **tabs** are handled; pane splits are not.
+- **A brand-new workspace's first tab is left alone by default** (`new_workspace = "skip"`): you usually
+  want to `cd` or prepare something first, and having an agent take over immediately gets in the way.
+  Set it to `"run"` to opt in; later tabs you open in that workspace still run as usual.
 - Tabs restored after a herdr server restart are not triggered (herdr already owns those panes).
 - New worktrees / `workspace create` also emit `tab.created`; exclude them with `cwd_glob` +
   `mode = "skip"`.

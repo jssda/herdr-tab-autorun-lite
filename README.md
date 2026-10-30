@@ -56,6 +56,7 @@ herdr plugin link ./herdr-tab-autorun-lite
 ```toml
 enabled = true
 picker = "auto"          # auto = 有 fzf 用 fzf；builtin = 永远内置菜单；fzf = 只认 fzf
+new_workspace = "skip"   # 新建 workspace 的初始 tab 不自动执行（常要先 cd）；"run" 恢复
 
 [default]
 mode = "agent"           # agent | command | skip
@@ -189,6 +190,9 @@ tab.created 事件 ──► herdr 运行 autorun.py --event
 ## 已知边界
 
 - 只对新 **tab** 生效，不处理 pane split。
+- **新建 workspace 的初始 tab 默认不执行**（`new_workspace = "skip"`）：新建 workspace 往往要先 `cd`
+  或做别的准备，一进去就被 agent 接管很碍事。想恢复自动执行改成 `"run"`；那个 workspace 里后续
+  手动新开的 tab 仍照常执行。
 - herdr server 重启后恢复的 tab 不触发（此时 pane 已被 herdr 认领，本来也不该重跑）。
 - 新建 worktree / `workspace create` 产生的 tab 同样会触发，用 `cwd_glob` + `mode = "skip"` 排除。
 - `mode = "agent"` 依赖 `herdr agent start` 能识别的 kind；不认识的 CLI 用 `mode = "command"`。
