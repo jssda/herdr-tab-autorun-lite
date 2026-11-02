@@ -118,7 +118,10 @@ description = "new tab: pick agent"
 After `herdr config check` and `herdr server reload-config`, `prefix+t` opens the menu; picking an
 entry creates the tab and runs the choice inside it. Esc cancels without creating a tab.
 
-Define your own entries (omit `[[choices]]` to get the built-in hermes / opencode / plain shell):
+Define your own entries (omit `[[choices]]` to get the built-in hermes / opencode / plain shell).
+Fields you leave out are inherited from `[default]`: `mode`, `kind` and `ready_timeout_ms` always, and
+`agent_args` only when the choice uses the **same kind** as `[default]` (so `--tui` is not applied to
+opencode):
 
 ```toml
 [[choices]]

@@ -116,7 +116,9 @@ description = "新建 tab 并选择执行哪个 agent"
 `herdr config check` + `herdr server reload-config` 之后按 `prefix+t` 就会弹出选择菜单，
 选中后新建 tab 并在里面执行；Esc 取消，不建 tab。
 
-选项自己定（不写则用内置的 hermes / opencode / 裸 shell）：
+选项自己定（不写则用内置的 hermes / opencode / 裸 shell）。选项里没写的字段从 `[default]` 继承——
+`mode` / `kind` / `ready_timeout_ms` 都继承，`agent_args` 只在**和 `[default]` 同一个 kind** 时继承
+（否则 `--tui` 这类参数会被套到 opencode 上）：
 
 ```toml
 [[choices]]

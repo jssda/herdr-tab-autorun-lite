@@ -444,19 +444,32 @@ def consume_own(tab_id: str) -> bool:
 
 
 def choices(cfg: dict) -> list:
+    """选择器选项。选项没写的字段从 [default] 继承（尤其 agent_args，否则 --tui 之类会丢）。"""
     rows = cfg.get("choices") or DEFAULT_CHOICES
+    base = dict(cfg.get("default") or {})
     out = []
     for row in rows:
         label = str(row.get("label") or "").strip()
         if not label:
             continue
-        out.append({
+        item = {
             "label": label,
-            "mode": str(row.get("mode") or "skip"),
-            "kind": str(row.get("kind") or ""),
+            "mode": str(row.get("mode") or base.get("mode") or "skip"),
+            "kind": str(row.get("kind") or base.get("kind") or ""),
             "command": str(row.get("command") or ""),
-            "agent_args": list(row.get("agent_args") or []),
-        })
+            "ready_timeout_ms": int(row.get("ready_timeout_ms") or base.get("ready_timeout_ms") or 8000),
+        }
+        # agent_args 只在「和 [default] 同一个 kind」时继承：--tui 这类参数不能套到别的 agent 上
+        same_kind = bool(item["kind"]) and item["kind"] == str(base.get("kind") or "")
+        raw_args = row.get("agent_args")
+        if raw_args is None:
+            raw_args = (base.get("agent_args") or []) if same_kind else []
+        item["agent_args"] = [str(a) for a in raw_args]
+        # mode=command / skip 的选项不该继承 agent 的 kind 和参数
+        if item["mode"] != "agent":
+            item["kind"] = str(row.get("kind") or "")
+            item["agent_args"] = []
+        out.append(item)
     return out
 
 
@@ -597,12 +610,13 @@ def do_new(cfg: dict, label: str) -> int:
     log(f"新建 {tab_id} → {label} (mode={row['mode']})")
     if row["mode"] == "skip":
         return 0
-    if not wait_shell_ready(pane_id, int(cfg.get("default", {}).get("ready_timeout_ms") or 8000)):
+    if not wait_shell_ready(pane_id, int(row.get("ready_timeout_ms") or 8000)):
         log(f"{pane_id} 的 shell 在超时内没就绪，放弃")
         return 0
     try:
         if row["mode"] == "agent":
-            start_agent(pane_id, {"kind": row["kind"] or "hermes", "agent_args": row["agent_args"]})
+            start_agent(pane_id, {"kind": row["kind"] or "hermes",
+                                  "agent_args": row["agent_args"]})
         else:
             run_command(pane_id, row["command"])
     except Exception as exc:
